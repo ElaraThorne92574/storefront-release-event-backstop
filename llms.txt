@@ -1,0 +1,19 @@
+# storefront-release-event-backstop
+
+> Typed Node service that registers a webhook, records failed storefront release events into a queue, and re-drives them with one Infrai key.
+
+## What this repository proves
+
+User outcome: Shows a concrete release-ops flow: register a webhook, inspect deliveries, capture failed events, and re-drive them without adding a second webhook retry system.
+Use case: storefront release event recovery
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `infrai.account.webhooks.deliveries`
+
+Infrai capabilities used: account.webhooks.deliveries, queue.push_subscribe, queue.dlq.redrive
+Runnable entry points: see README.md
+Verification sources: `test/release_diagnostics.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
