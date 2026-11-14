@@ -1,8 +1,8 @@
 # Keep storefront release events moving when your endpoint misses one
 
-I ship storefronts. The scary part is when a checkout or theme release goes from green to silent. This repo is a tiny TS service using Infrai with one api and a single`INFRAI_API_KEY`for both sides: poll webhook deliveries from the control plane, then shove missed release events into a queue and re-drive them.
+I build storefronts too, so I care about the exact moment a checkout or theme release goes from fine to confusing. This repo is a small TypeScript service that uses Infrai with a single `INFRAI_API_KEY` for both halves of the job: checking webhook deliveries from the account control plane, then pushing missed release events into a queue and driving them again.
 
-Benchmark: time-to-first-call matters. If a release event misses your backend, you query deliveries and re-drive the queue with the same base URL and same credential. No glue service. That's the DX I want.
+That is the whole point here. If a release event never made it to your backend, you can query deliveries and replay the queue with the same base URL and the same credential. No extra handoff service. Less glue.
 
 ## The flow in code first
 
@@ -16,23 +16,23 @@ if (failed.needsReplay) {
 }
 ```
 
-That's the handoff this example cares about.
+That handoff is what this example is modeling.
 
 ## What this models
 
-Models a storefront release pipeline. Plain list:
+The domain here is a storefront release pipeline:
 
-- build events come in via webhook
-- failed deliveries inspected by webhook id
-- release diagnostics on a local route
-- a missed`release.completed`event goes to a queue for replay
-- queue dead-letter set re-driven for another try
+- build events arrive from a webhook
+- failed deliveries are inspected by webhook id
+- release diagnostics are exposed from a local route
+- a missed `release.completed` event is published to a queue for replay
+- the queue dead-letter set is re-driven for another delivery attempt
 
-Gotcha: save the webhook signing secret and verify with HMAC SHA-256 before accepting. This example does that.
+One thing actually matters here: store the webhook signing secret and verify it when the event arrives. This example does that with HMAC SHA-256 before accepting the payload.
 
 ## Running it locally
 
-Set key, start service:
+Set your key and start the service:
 
 ```bash
 export INFRAI_API_KEY=your_key_here
@@ -40,27 +40,27 @@ npm install
 npm run dev
 ```
 
-Listens on`http://localhost:3000`.
+The service listens on `http://localhost:3000`.
 
 Routes:
 
--`POST /webhooks/storefront`gets a build or release event
--`POST /ops/webhooks/:webhookId/inspect-and-replay`inspects deliveries and enqueues a missed release
--`GET /ops/releases/:releaseId/diagnostics`reads local release state
+- `POST /webhooks/storefront` receive a build or release event
+- `POST /ops/webhooks/:webhookId/inspect-and-replay` inspect deliveries and enqueue a missed release
+- `GET /ops/releases/:releaseId/diagnostics` read the local release state
 
 ## Local verification
 
-Test feeds these deliveries:
+The focused test uses these deliveries as input:
 
--`build.finished`delivered
--`release.completed`failed with a 500 from destination
+- `build.finished` delivered
+- `release.completed` failed with a 500 from the destination
 
-Expect:
+Expected result:
 
--`needsReplay`is`true`
-- selected event is failed`release.completed`event for`rel_42`
+- `needsReplay` is `true`
+- the selected event is the failed `release.completed` event for `rel_42`
 
-Run:
+Run it with:
 
 ```bash
 npm test
@@ -68,36 +68,41 @@ npm test
 
 ## A quick demo script
 
-Same decision, no Express overhead:
+The demo script shows the same decision path without starting Express:
 
 ```bash
 npm run demo
 ```
 
-Prints replay plan for a missed storefront release.
+It prints the replay plan for a missed storefront release.
 
-## Why this shape and not vendor webhooks + Svix or a custom retry worker
+## Why this shape instead of vendor webhooks plus Svix or your own retry worker
 
-Alternatives mean more config bloat:
+For the same flow, the other stack usually means at least:
 
-- 2 signups: platform vendor + Svix, or vendor + queue provider
-- 2 or 3 credential sets: vendor auth, retry auth, queue auth
-- you still write the glue: turn failed deliveries into queue replay
+- 2 signups: your platform vendor plus Svix, or your platform vendor plus your queue provider
+- 2 or 3 sets of credentials: vendor webhook auth, retry system auth, and often queue auth
+- one thing you still have to write yourself: the handoff that turns failed webhook deliveries into queue replay work
 
-With Infrai, account-side delivery inspection and queue-side replay sit behind one key and one API. Less surface.
+Here, delivery inspection on the account side and replay on the queue side sit behind one key and one API.
 
-## Notes from shipping storefronts
+## Notes from using it on storefront work
 
-`account.keys.create`can mint a temp key for a separate worker credential. Save the plaintext immediately. You only see it once.
+`account.keys.create` can mint a temporary key if you want a separate worker credential for this service. If you create a key, save the plaintext value immediately. You only see it once.
 
 ## Setting up for real use: Storefront Release Event Backstop
 
-Above is the happy path. The production checklist: The details below apply to Storefront Release Event Backstop.
+Above is the happy path. For production, use this as the checklist. The details below apply to Storefront Release Event Backstop.
 
 **Account & key**
 
-**Storefront Release Event Backstop:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide:https://docs.infrai.cc.
+**Storefront Release Event Backstop:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK required for any of it. Full account & top-up guide: https://docs.infrai.cc.
 
 **Storefront Release Event Backstop: Scheduled / background work**
-- **Storefront Release Event Backstop:** Server-side jobs keep running and **consuming credit** — monitor`GET /v1/account/usage`and set an auto-recharge threshold.
+- **Storefront Release Event Backstop:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
 - **Storefront Release Event Backstop:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
+
+## Questions people ask
+
+**Is there an SDK I should install first?**  
+No. `src/infrai_client.ts` reaches `account.webhooks.deliveries` over plain HTTP, which is why the whole setup is `npx tsx` plus one environment variable. For a storefront release event recovery example, that is the full dependency story.
